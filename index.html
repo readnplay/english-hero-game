@@ -867,7 +867,7 @@ function openSync(){
     <div class="row" style="justify-content:space-between"><button class="btn" id="syLater">${c?'닫기':'나중에'}</button><button class="btn gold" id="syGo">연결</button></div></div>`;
   $('#modal').hidden=false;
 }
-$('#modal').addEventListener('click',async e=>{
+document.getElementById('modal').addEventListener('click',async e=>{
   if(!$('#modal').querySelector('[data-sync]'))return;const id=e.target.id;
   if(id==='syLater'||id==='modal'){try{localStorage.setItem(SYNC_KEY+'-skip','1')}catch(_){}$('#modal').hidden=true;return}
   if(id==='syGo'){const msg=$('#syMsg');msg.textContent='연결하는 중…';e.target.disabled=true;
@@ -875,7 +875,7 @@ $('#modal').addEventListener('click',async e=>{
       toast(r==='loaded'?'기록을 불러왔어요!':r==='new'?'새 기록을 만들었어요. 다른 기기에서도 같은 ID로 들어오세요':'연결됐어요! 이제 자동으로 저장돼요')}
     catch(err){e.target.disabled=false;msg.textContent=err.status===401?'비밀번호가 달라요. 다시 확인해 주세요.':err.status===400?err.message:'연결이 안 돼요. 인터넷을 확인해 주세요.'}}
 });
-$('#modal').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.target.id==='syPin'||e.target.id==='syId'))$('#syGo')?.click()});
+document.getElementById('modal').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.target.id==='syPin'||e.target.id==='syId'))$('#syGo')?.click()});
 async function initCloud(tries=0){
   if(!(window.claude&&window.claude.use)){if(tries<8)setTimeout(()=>initCloud(tries+1),500);else initWebSync();return}
   try{
