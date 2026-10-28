@@ -745,10 +745,10 @@ const ACCS=`행운의 동전|coin|.1|#f2b33b|150|0|몬스터 돈 +10%
 부자의 지갑|coin|.5|#c98a12|22000|65|몬스터 돈 +50%
 전설의 부적|all|1|#ffffff|40000|100|모든 효과가 조금씩 (돈·치명타·충전·보석)`.split('\n').map(l=>{const [n,e,v,c,cc,gc,d]=l.split('|');return {n,e,v:+v,c,cc:+cc,gc:+gc,d}});
 const PETS=[
- {id:'cat',n:'은빛 고양이',c:'#c9ced8',gc:15,dmg:1,cd:2.4,d:'보스전에서 정답 첫 글자 힌트를 보여 줘요.'},
+ {id:'cat',n:'은빛 고양이',c:'#c9ced8',gc:15,dmg:1,cd:2.4,d:'보스 문제나 생활 미션을 한 번에 맞히면 보석을 1개 더 물어 와요.'},
  {id:'owl',n:'책 읽는 부엉이',c:'#a0703c',gc:20,dmg:1,cd:2.4,d:'문장을 한 번 더 천천히 읽어 줘요.'},
  {id:'dog',n:'야구 강아지',c:'#d99a52',gc:25,dmg:1,cd:2.2,d:'야구에서 공을 천천히 던져 줘요.'},
- {id:'togyeol',n:'토결이',c:'#f6b9c8',gc:35,dmg:2,cd:1.6,d:'달에서 온 토끼. 꽤 강하게 싸우고, 생활 미션에서 틀리면 응원하며 하트를 1칸 채워 줘요.'},
+ {id:'togyeol',n:'토결이',c:'#f6b9c8',gc:35,dmg:2,cd:1.6,d:'달에서 온 토끼. 꽤 강하게 싸우고, 보스 문제를 한 번에 맞히면 하트를 1칸 채워 줘요.'},
  {id:'dragon',n:'작은 용',c:'#4cc38a',gc:60,dmg:3,cd:1.5,d:'불을 뿜어 싸우고, 마법을 쓰면 합동 공격을 해요.'},
  {id:'graybear',n:'야구곰 회색이',c:'#b9bec8',gc:45,dmg:3,cd:1.7,d:'배트로 몬스터를 멀리 날려 보내요. 야구에서 홈런 타이밍이 넓어져요.'},
  {id:'creambear',n:'솜뭉치 크림곰',c:'#f2d9a8',gc:40,dmg:2,cd:1.6,d:'글러브로 몬스터 공격을 막아 줘요 (막기 +10%).'}];
@@ -799,7 +799,7 @@ function spellType(s){const t=s.en.toLowerCase();
    3. 저장 (계정 db + 기기 localStorage)
    ========================================================= */
 // 이 숫자를 올리면 예전 저장(기기·계정 모두)을 버리고 처음부터 시작함
-const EPOCH=2;
+const EPOCH=3;
 const DEF={v:2,epoch:EPOCH,name:'민결',coins:0,gems:0,xp:0,weapon:0,boots:0,armor:0,pets:[],pet:null,spells:{},spellEq:null,ballOpen:false,stat:{atk:0,def:0,hp:0},lvSeen:1,own:{weapon:[0],boots:[0],armor:[0],acc:[]},acc:null,enh:{},penh:{},pgear:[],pgearEq:null,
   playSec:0,ksb:0,M:{},custom:[],excluded:[],day:{d:'',sec:0,extra:0},
   stats:{kills:0,bosses:0,right:0,wrong:0,games:0,hits:0,homers:0,npc:0,deaths:0,caught:0},
@@ -1147,9 +1147,11 @@ const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
 const rnd=(a,b)=>a+Math.random()*(b-a);const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 // 레벨업 속도: 숫자가 클수록 느림 (Lv2=20, Lv3=80, Lv5=320, Lv10=1620 경험치)
-const XPK=20;
-const level=()=>Math.floor(Math.sqrt(S.xp/XPK))+1;
-const lvProg=()=>{const l=level(),a=XPK*(l-1)**2,b=XPK*l*l;return (S.xp-a)/(b-a)};
+// 레벨 L이 되는 데 필요한 누적 경험치. 레벨이 오를수록 한 칸 오르는 데 드는 경험치가 점점 커짐
+// (Lv2 25, Lv3 132, Lv4 350, Lv5 700, Lv7 1860, Lv10 4910)
+const xpNeed=L=>Math.round(25*Math.pow(L-1,2.4));
+const level=()=>{let L=1;while(S.xp>=xpNeed(L+1)&&L<99)L++;return L};
+const lvProg=()=>{const l=level(),a=xpNeed(l),b=xpNeed(l+1);return (S.xp-a)/(b-a)};
 const pet=()=>PETS.find(p=>p.id===S.pet);
 const dayNum=()=>Math.floor((Date.now()-new Date().getTimezoneOffset()*60000)/86400000);
 const dayStr=()=>new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
@@ -1471,7 +1473,8 @@ function chooseBoss(word){
     for(let i=0;i<26;i++){const a=Math.random()*6.28;G.parts.push({x:m.x,y:m.y-m.w*.5,vx:Math.cos(a)*rnd(80,200),vy:Math.sin(a)*rnd(80,200),life:rnd(.4,.8),color:i%2?'#bfe9ff':'#ffffff',r:rnd(1.5,3)})}
     B.mobs.forEach(o=>{if(o!==m){o.state='retreat';o.t=1.4;o.shield=0}});
     speak(word);jingle([523,784],80);
-    if(B.wrongs===0){mark('s'+s.id,true);S.stats.right++}
+    if(B.wrongs===0){mark('s'+s.id,true);S.stats.right++;
+      if(S.pet==='togyeol'){G.hero.hp=Math.min(maxHp(),G.hero.hp+1);renderHearts(1);fxText(G.pet.x,G.pet.y-40,'한 번에 정답! 하트 +1','#f6b9c8',13,1.4,0,1)}}
   }else{
     B.wrongs++;B.used.push(word);S.stats.wrong++;mark('s'+s.id,false);
     const m=B.mobs.find(x=>x.choice===word);m.stone=1;m.state='retreat';m.t=1.6;
@@ -1484,6 +1487,7 @@ function chooseBoss(word){
 }
 function bossWin(m){
   const B=G.boss,s=B.s;let g=B.wrongs===0?3:B.wrongs===1?2:1;
+  if(B.wrongs===0&&S.pet==='cat'){g++;fxText(G.pet.x,G.pet.y-40,'고양이가 보석을 물어 왔어요!','#c9b8ff',13,1.4,0,1)}
   S.gems+=g;S.xp+=8;S.stats.bosses++;S.ksb=0;B.state='done';
   fxText(m.x,m.y-m.w-20,'보석 +'+g,'#c9b8ff',20,1.8);jingle([523,659,784,1046,1318],100);
   speak(s.en,{owl:1});save();renderHUD();renderBossBar(g);
@@ -1496,7 +1500,7 @@ function renderBossBar(won){
   let h=`<div class="top"><span class="tag v">미션 보스</span><span class="mko">"${esc(s.ko)}" 를 완성하자!</span>${s.pat&&filled?`<span class="tag">${esc(PATTERN_NAMES[s.pat])}</span>`:''}</div><div class="men">${en}</div>`;
   if(B.state==='choose'){
     h+=`<div class="opts">${B.opts.map(o=>`<button class="opt" data-ch="${esc(o)}" ${B.used.includes(o)?'disabled':''}>${esc(o)}</button>`).join('')}</div>`;
-    h+=`<div class="mini"><button data-bb="hear">${ICON.ear}문장 듣기</button><button data-bb="slow">${ICON.ear}천천히</button>${S.pet==='cat'?`<button data-bb="hint">고양이 힌트${B.hint?': '+esc(s.key[0])+'…':''}</button>`:''}</div>`;
+    h+=`<div class="mini"><button data-bb="hear">${ICON.ear}문장 듣기</button><button data-bb="slow">${ICON.ear}천천히</button></div>`;
   }else if(B.state==='fight')h+=`<div class="sub"><b class="en">${esc(s.key)}</b> 보스의 방어막이 깨졌어요. 공격해서 물리치세요!</div>`;
   else h+=`<div class="sub">${esc(s.en)} — 보스 처치! 보석 +${won||''} <button class="btn" data-bb="say" style="margin-left:6px">다시 듣기</button></div>`;
   if(B.explain)h+=`<div class="explain">${B.explain}</div>`;
@@ -1507,7 +1511,7 @@ $('#bossBar').addEventListener('click',e=>{
   const c=e.target.closest('[data-ch]');if(c){chooseBoss(c.dataset.ch);return}
   const b=e.target.closest('[data-bb]');if(!b||!G.boss)return;const s=G.boss.s;
   if(b.dataset.bb==='hear')speak(blankEn(s,'...'));if(b.dataset.bb==='slow')speak(blankEn(s,'...'),{rate:.6});
-  if(b.dataset.bb==='say')speak(s.en);if(b.dataset.bb==='hint'){G.boss.hint=true;renderBossBar()}
+  if(b.dataset.bb==='say')speak(s.en);
 });
 
 /* ---- 마법 ---- */
@@ -1796,12 +1800,11 @@ $('#modal').addEventListener('click',e=>{
     const b=e.target.closest('[data-npc]');
     if(b&&!n.done){const o=n.q.opts[+b.dataset.npc],q=n.q;
       if(o===q.right){n.done=true;b.classList.add('right');S.stats.npc++;if(q.s)mark('s'+q.s.id,n.tries===0);
-        const c=Math.round(10*diff()),g=n.tries===0?2:1;S.coins+=c;S.gems+=g;S.xp+=6;G.hero.hp=maxHp();renderHearts();save();renderHUD();
+        const c=Math.round(10*diff()),g=(n.tries===0?2:1)+(n.tries===0&&S.pet==='cat'?1:0);S.coins+=c;S.gems+=g;S.xp+=6;G.hero.hp=maxHp();renderHearts();save();renderHUD();
         speak(q.type==='say'?q.s.en:q.en,{owl:1});jingle([523,659,784,1046]);
         renderNPC(`<div class="explain" style="background:#123a2a;border-color:#2f7a55">정답! ${q.type==='say'?`<b>${esc(q.s.en)}</b> = ${esc(q.s.ko)}`:`<b>${esc(q.en)}</b> = ${esc(q.right)}`}<br><b style="color:#d9ccff">보석 +${g}</b> · 돈 +${c} · 하트 가득 · 경험치 +6</div>`);
         $('#modal').querySelectorAll('[data-npc]').forEach(x=>{if(x.textContent===q.right)x.classList.add('right')})}
       else{n.tries++;b.disabled=true;if(q.s)mark('s'+q.s.id,false);beep(150,.3,'sawtooth',.06);
-        if(S.pet==='togyeol'){G.hero.hp=Math.min(maxHp(),G.hero.hp+1);renderHearts()}
         const ex=q.type==='say'?`그 말은 "${esc((SENTS.find(x=>x.en===o)||{}).ko||'다른 뜻')}" 라는 뜻이에요. 다시 골라 보세요.`:`'${esc(o)}'가 아니에요. 다시 들어 보세요.`;
         const box=document.createElement('div');box.className='explain';box.innerHTML=ex+(S.pet==='togyeol'?' (토결이: 괜찮아, 다시 해 보자!)':'');
         $('#modal .sheet').querySelector('.explain')?.remove();$('#modal .sheet').insertBefore(box,$('#modal .sheet .row'))}
