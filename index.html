@@ -203,7 +203,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .modal{position:fixed;inset:0;background:#04060bcc;display:grid;place-items:center;z-index:50;padding:16px}
 .sheet{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;width:min(460px,100%);display:flex;flex-direction:column;gap:12px;max-height:88vh;overflow:auto;box-sizing:border-box}
 .sheet label{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.sheet input[type=text],.sheet input[type=number],.sheet select{font-family:var(--body);font-size:16px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:#0c1018;color:var(--ink);width:55%;box-sizing:border-box;user-select:text;-webkit-user-select:text}
+.sheet input[type=text],.sheet input[type=number],.sheet input[type=password],.sheet select{font-family:var(--body);font-size:16px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:#0c1018;color:var(--ink);width:55%;box-sizing:border-box;user-select:text;-webkit-user-select:text}
 .sheet textarea{width:100%;min-height:70px;font-size:12px;font-family:ui-monospace,monospace;background:#0c1018;color:var(--ink);border:1px solid var(--line);border-radius:8px;box-sizing:border-box;user-select:text;-webkit-user-select:text}
 .npc{display:flex;gap:12px;align-items:flex-start}
 .npc .face{width:78px;flex:0 0 auto;background:radial-gradient(circle,#2a3348,#171d2a);border-radius:12px}
@@ -838,8 +838,46 @@ async function pushCloud(){
   cloud.writing=true;try{await cloud.ref.set(JSON.parse(JSON.stringify(S)));cloud.on=true}catch(e){cloud.on=false}
   cloud.writing=false;if(cloud.dirty){cloud.dirty=false;pushCloud()}
 }
+/* ---- Claude 밖(Vercel)에서: ID·비밀번호로 서버에 저장해 기기끼리 이어하기 ---- */
+const SYNC_KEY='english-hero-sync';
+const isWeb=()=>!(window.claude&&window.claude.use)&&/^https?:$/.test(location.protocol);
+function syncCreds(){try{return JSON.parse(localStorage.getItem(SYNC_KEY))}catch(e){return null}}
+async function syncApi(action,body){
+  const r=await fetch('/api/save',{method:'POST',headers:{'content-type':'application/json'},keepalive:action==='save',body:JSON.stringify(Object.assign({action},body))});
+  const j=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(j.error||'연결 오류');e.status=r.status;throw e}return j;
+}
+function webAdapter(c){return {web:true,id:c.id,get:async()=>{const j=await syncApi('load',c);return {exists:!!j.exists,data:()=>j.data}},set:async d=>{await syncApi('save',Object.assign({},c,{data:d}))}}}
+async function connectSync(id,pin){
+  const c={id:String(id).trim().toLowerCase(),pin:String(pin).trim()};
+  const j=await syncApi('load',c);
+  try{localStorage.setItem(SYNC_KEY,JSON.stringify(c))}catch(e){}
+  cloud.ref=webAdapter(c);cloud.on=true;
+  const d=j.exists?j.data:null;
+  if(d&&d.epoch===EPOCH&&(d.savedAt||0)>(S.savedAt||0)){S=migrate(d);buildSents();saveLocal();resetWorld();renderAll();renderOpening();toast('저장된 모험을 불러왔어요 ('+c.id+')');return 'loaded'}
+  if(!S.savedAt)S.savedAt=Date.now();await pushCloud();return d?'kept':'new';
+}
+function initWebSync(){if(!isWeb())return;const c=syncCreds();if(c&&c.id)connectSync(c.id,c.pin).catch(e=>{if(e.status===401){try{localStorage.removeItem(SYNC_KEY)}catch(_){}toast('비밀번호가 바뀌었어요. 다시 연결해 주세요')}})}
+function openSync(){
+  const c=syncCreds();
+  $('#modal').innerHTML=`<div class="sheet" data-sync="1" role="dialog" aria-label="기기 연결"><p class="h2">어느 기기에서나 이어하기</p>
+    <p class="sub" style="margin:0">ID와 비밀번호(숫자 4자리)를 넣으면 핸드폰·컴퓨터 어디서든 같은 기록으로 이어져요. 처음 쓰는 ID면 지금 기록으로 새로 만들어져요.</p>
+    <label>ID <input type="text" id="syId" autocomplete="username" autocapitalize="off" spellcheck="false" value="${esc(c&&c.id||'')}"></label>
+    <label>비밀번호 <input type="password" id="syPin" inputmode="numeric" maxlength="8" autocomplete="current-password"></label>
+    <p class="sub" id="syMsg" style="margin:0;min-height:1.4em"></p>
+    <div class="row" style="justify-content:space-between"><button class="btn" id="syLater">${c?'닫기':'나중에'}</button><button class="btn gold" id="syGo">연결</button></div></div>`;
+  $('#modal').hidden=false;
+}
+$('#modal').addEventListener('click',async e=>{
+  if(!$('#modal').querySelector('[data-sync]'))return;const id=e.target.id;
+  if(id==='syLater'||id==='modal'){try{localStorage.setItem(SYNC_KEY+'-skip','1')}catch(_){}$('#modal').hidden=true;return}
+  if(id==='syGo'){const msg=$('#syMsg');msg.textContent='연결하는 중…';e.target.disabled=true;
+    try{const r=await connectSync($('#syId').value,$('#syPin').value);$('#modal').hidden=true;
+      toast(r==='loaded'?'기록을 불러왔어요!':r==='new'?'새 기록을 만들었어요. 다른 기기에서도 같은 ID로 들어오세요':'연결됐어요! 이제 자동으로 저장돼요')}
+    catch(err){e.target.disabled=false;msg.textContent=err.status===401?'비밀번호가 달라요. 다시 확인해 주세요.':err.status===400?err.message:'연결이 안 돼요. 인터넷을 확인해 주세요.'}}
+});
+$('#modal').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.target.id==='syPin'||e.target.id==='syId'))$('#syGo')?.click()});
 async function initCloud(tries=0){
-  if(!(window.claude&&window.claude.use)){if(tries<8)setTimeout(()=>initCloud(tries+1),500);return}
+  if(!(window.claude&&window.claude.use)){if(tries<8)setTimeout(()=>initCloud(tries+1),500);else initWebSync();return}
   try{
     const [db,user]=await Promise.all([claude.use('db'),claude.use('user')]);if(!db||!user)return;
     const uid=await user.id();if(!uid)return;
@@ -2052,7 +2090,8 @@ function openSettings(){
     <label>읽기 속도 <select id="setRate"><option value=".7">느리게</option><option value=".9">보통</option><option value="1">빠르게</option></select></label>
     <div class="stats"><span>레벨<b>${level()}</b></span><span>모험 시간<b>${Math.floor(S.playSec/60)}분</b></span><span>물리친 몬스터<b>${st.kills}</b></span><span>잡은 도망자<b>${st.caught}</b></span>
       <span>미션 보스<b>${st.bosses}</b></span><span>생활 미션<b>${st.npc}</b></span><span>한 번에 정답<b>${st.right}</b></span><span>외운 주문<b>${Object.keys(S.spells).length}</b></span></div>
-    <p class="sub" style="font-size:13px">${cloud.on?'진행 상황이 Claude 계정에 저장돼서 휴대폰과 PC에서 이어서 할 수 있어요.':(window.claude?'지금은 이 기기에만 저장되고 있어요. Claude에 로그인한 상태로 열면 계정에 저장돼요.':'진행 상황은 이 기기 브라우저에 저장돼요. 다른 기기로 옮기려면 부모 설정의 백업 코드를 복사해서 새 기기에서 복원하세요.')}</p>
+    ${isWeb()?`<div class="row"><button class="btn" id="toSync">${cloud.ref&&cloud.ref.web?'기기 연결됨: '+esc(cloud.ref.id)+' (바꾸기)':'어느 기기에서나 이어하기 (ID 연결)'}</button></div>`:''}
+    <p class="sub" style="font-size:13px">${cloud.ref&&cloud.ref.web?'ID '+esc(cloud.ref.id)+'로 서버에 자동 저장되고 있어요. 다른 기기에서도 같은 ID·비밀번호로 이어서 할 수 있어요.':cloud.on?'진행 상황이 Claude 계정에 저장돼서 휴대폰과 PC에서 이어서 할 수 있어요.':(window.claude?'지금은 이 기기에만 저장되고 있어요. Claude에 로그인한 상태로 열면 계정에 저장돼요.':'진행 상황은 이 기기 브라우저에 저장돼요. 다른 기기로 옮기려면 부모 설정의 백업 코드를 복사해서 새 기기에서 복원하세요.')}</p>
     <div class="row" style="justify-content:space-between"><button class="btn" id="toParent">부모 설정</button><button class="btn gold" id="setClose">닫기</button></div></div>`;
   $('#setRate').value=String(S.settings.rate<.8?.7:S.settings.rate>.95?1:.9);$('#modal').hidden=false;
 }
@@ -2083,6 +2122,7 @@ $('#modal').addEventListener('click',async e=>{
     let n=0;try{n=speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang)).length}catch(_){}
     $('#sndMsg').textContent=n?'효과음과 영어 목소리가 나와야 해요':'효과음만 나와요. 이 브라우저에는 영어 목소리가 없어요 (크롬·휴대폰에서는 나와요)';return}
   if(id==='toParent'){closeSettings();parentGate(openParent);return}
+  if(id==='toSync'){closeSettings();openSync();return}
   if(id==='gateOk'){if(+$('#gateIn').value===gateAns){const cb=gateCb;$('#modal').hidden=true;cb&&cb()}else{$('#gateIn').value='';toast('답이 달라요')}return}
   if(id==='gateNo'||(id==='modal'&&$('#gateIn'))){$('#modal').hidden=true;return}
   if(id==='pClose'||(id==='modal'&&$('#pLimit'))){S.settings.limit=+$('#pLimit').value;save();$('#modal').hidden=true;return}
@@ -2113,6 +2153,7 @@ function renderOpening(){
 (function embers(){const o=$('#embers');for(let i=0;i<22;i++){const e=document.createElement('i');e.className='ember';e.style.left=Math.random()*100+'%';
   e.style.setProperty('--dx',(Math.random()*80-40)+'px');e.style.animationDuration=(5+Math.random()*7)+'s';e.style.animationDelay=(-Math.random()*10)+'s';o.appendChild(e)}})();
 $('#startBtn').addEventListener('click',()=>{unlockAudio();
+  if(isWeb()&&!syncCreds()){let skip=null;try{skip=localStorage.getItem(SYNC_KEY+'-skip')}catch(_){}if(!skip)setTimeout(openSync,300)}
   $('#opening').hidden=true;G.started=true;last=performance.now();
   try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();actx.resume()}catch(e){}
   pickVoice();fitStage();resize();renderAll();jingle([392,523,659,784],90);setTimeout(()=>speak("Let's go!"),400);
@@ -2120,7 +2161,7 @@ $('#startBtn').addEventListener('click',()=>{unlockAudio();
 
 G.hero.hp=maxHp();resize();renderAll();renderOpening();pickVoice();
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)save()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){save();clearTimeout(saveT);pushCloud()}});
 requestAnimationFrame(loop);
 initCloud();
 </script>
