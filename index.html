@@ -76,6 +76,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .ovtop{position:absolute;left:10px;right:10px;top:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none;z-index:3}
 #hearts{display:flex;gap:2px;flex-wrap:wrap;max-width:60%}
 #hearts svg{width:20px;height:20px;filter:drop-shadow(0 1px 1px #0008)}
+.bagbtn{position:absolute;right:10px;top:58px;z-index:4;font-family:var(--disp);font-size:15px;color:#1b1206;background:var(--gold);border-radius:10px;padding:7px 14px;box-shadow:0 3px 0 #6b3f06}
+.bagbtn:active{transform:translateY(2px);box-shadow:0 1px 0 #6b3f06}
+.baggrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px}
+.bagit{display:flex;flex-direction:column;align-items:center;gap:3px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px 4px;font-size:12.5px;line-height:1.3;min-height:84px}
+.bagit svg{width:46px;height:46px}
+.bagit.on{border-color:var(--green);box-shadow:inset 0 0 0 1px var(--green);background:#123a2a}
 #zoneLbl{font-family:var(--disp);font-size:14px;background:#0b0e15b3;border:1px solid #ffffff22;border-radius:8px;padding:3px 9px;text-align:right;white-space:nowrap}
 #zoneLbl small{display:block;font-family:var(--body);font-size:11px;color:var(--ink2)}
 .learn{position:absolute;left:50%;top:40px;transform:translateX(-50%);z-index:4;background:#0b0e15d9;border:1px solid #ffffff2a;border-radius:12px;padding:7px 12px;display:flex;gap:10px;align-items:center;max-width:calc(100% - 24px);box-sizing:border-box;animation:fadein .25s}
@@ -276,6 +282,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <div class="stage" id="stage">
       <canvas id="cv"></canvas>
       <div class="ovtop"><div id="hearts"></div><div id="zoneLbl"></div></div>
+      <button class="bagbtn" id="bagBtn" aria-label="가방: 무기와 펫 바꾸기">가방</button>
       <div id="learn" class="learn" hidden></div>
       <div id="spellFx"></div>
       <div id="joy"><i id="knob"></i></div>
@@ -1148,8 +1155,8 @@ const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.random(
 const rnd=(a,b)=>a+Math.random()*(b-a);const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 // 레벨업 속도: 숫자가 클수록 느림 (Lv2=20, Lv3=80, Lv5=320, Lv10=1620 경험치)
 // 레벨 L이 되는 데 필요한 누적 경험치. 레벨이 오를수록 한 칸 오르는 데 드는 경험치가 점점 커짐
-// (Lv2 25, Lv3 132, Lv4 350, Lv5 700, Lv7 1860, Lv10 4910)
-const xpNeed=L=>Math.round(25*Math.pow(L-1,2.4));
+// (Lv2 12, Lv3 45, Lv5 167, Lv10 780, Lv20 3240, Lv30 7300, Lv50 19700 … 최대 99)
+const xpNeed=L=>Math.round(12*Math.pow(L-1,1.9));
 const level=()=>{let L=1;while(S.xp>=xpNeed(L+1)&&L<99)L++;return L};
 const lvProg=()=>{const l=level(),a=xpNeed(l),b=xpNeed(l+1);return (S.xp-a)/(b-a)};
 const pet=()=>PETS.find(p=>p.id===S.pet);
@@ -1287,6 +1294,8 @@ function update(dt){
   G.regenT+=dt;if(G.regenT>10-accV('regen')&&h.hp<maxHp()){h.hp++;G.regenT=0;renderHearts(1);fxText(h.x,h.y-66,'하트 +1','#ff8a8a',13,1,0,1)}
   // 바닥 하트
   G.dropT-=dt;if(G.dropT<=0){G.dropT=rnd(35,60);dropHeart(h.x+h.face*rnd(80,G.vw*.4),rnd(GT+14,GB-6))}
+  G.coinT=(G.coinT??rnd(12,20))-dt;if(G.coinT<=0){G.coinT=rnd(18,32);dropLoot('coin',h.x+h.face*rnd(60,G.vw*.45),rnd(GT+14,GB-6),Math.round(rnd(4,10)*diff()))}
+  G.gemT=(G.gemT??rnd(50,80))-dt;if(G.gemT<=0){G.gemT=rnd(80,130);dropLoot('gem',h.x+h.face*rnd(100,G.vw*.45),rnd(GT+14,GB-6),1)}
   for(const it of G.items){it.t-=dt;if(Math.abs(it.x-h.x)<24&&Math.abs(it.y-h.y)<20){it.t=0;pickHeart(it)}}
   G.items=G.items.filter(it=>it.t>0);
   // 등장 관리
@@ -1365,8 +1374,13 @@ function updPet(dt){
     if(gr.gem&&t.dead&&Math.random()<gr.gem*4){S.gems++;fxText(t.x,t.y-t.w-40,'보석 +1','#c9b8ff',14,1.2)}
     if(S.pet==='dragon')for(let i=0;i<8;i++)G.parts.push({x:p.x,y:p.y-16,vx:(t.x>p.x?1:-1)*rnd(80,160),vy:rnd(-30,20),life:.4,color:i%2?'#ffb347':'#ff5a2b',r:3})}else p.atkT=.5}
 }
-function dropHeart(x,y){G.items.push({x,y,t:18,ph:Math.random()*6})}
+function dropHeart(x,y){G.items.push({x,y,t:18,ph:Math.random()*6,type:'heart'})}
+// 땅에 떨어지는 돈·보석
+function dropLoot(type,x,y,v){G.items.push({x,y,t:type==='gem'?22:18,ph:Math.random()*6,type,v})}
 function pickHeart(it){const h=G.hero;
+  if(it.type==='coin'||it.type==='gem'){const gem=it.type==='gem';if(gem)S.gems+=it.v;else S.coins+=it.v;renderHUD();save();
+    fxText(it.x,it.y-24,gem?'보석 +'+it.v:'+'+it.v,gem?'#c9b8ff':'#f2b33b',15,1.1,0,gem);jingle(gem?[1046,1319,1568]:[988,1319],55);
+    for(let i=0;i<12;i++)G.parts.push({x:it.x,y:it.y-10,vx:rnd(-60,60),vy:rnd(-110,-30),g:200,life:.5,color:gem?'#b49dff':'#ffd27a',r:2});return}
   if(h.hp<maxHp()){h.hp++;renderHearts(1);fxText(it.x,it.y-24,'하트 +1','#ff8a8a',15,1,0,1)}else{S.coins+=5;renderHUD();fxText(it.x,it.y-24,'+5','#f2b33b',14,.9)}
   jingle([784,1046],60);for(let i=0;i<10;i++)G.parts.push({x:it.x,y:it.y-10,vx:rnd(-60,60),vy:rnd(-110,-30),g:200,life:.5,color:'#ff7a8a',r:2})}
 function hurtHero(d,force){
@@ -1449,6 +1463,7 @@ function killMob(m){
   fxText(m.x,m.y-m.w*.4,'+'+c,'#f2b33b',15,1);
   if(caught){S.stats.caught++;if(Math.random()<.3){S.gems++;fxText(m.x,m.y-m.w-34,'보석 +1','#c9b8ff',15,1.3)}fxText(m.x,m.y-m.w-50,'잡았다!','#ffd166',16,1.2)}
   if(Math.random()<(h.hp<maxHp()?.14:.05))dropHeart(m.x,m.y);
+  else if(Math.random()<.1)dropLoot('coin',m.x+rnd(-12,12),m.y+rnd(-6,6),Math.round(rnd(3,8)*diff()));
   if(G.spellCD>0)G.spellCD-=1;
   if(Math.random()<accV('gem')){S.gems++;fxText(m.x,m.y-m.w-62,'보석 +1','#c9b8ff',14,1.2)}
   S.M['w'+m.word.id]=S.M['w'+m.word.id]||{b:0,c:0,w:0,last:0,due:0};mark('w'+m.word.id,true);
@@ -1697,6 +1712,12 @@ function drawHero(){
 }
 function drawHeartItem(it){if(it.t<4&&Math.floor(it.t*6)%2)return;const T=performance.now()/1000,y=it.y-12-Math.abs(Math.sin(T*3+it.ph))*5;
   ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(it.x,it.y,8,2.4,0,0,7);ctx.fill();
+  if(it.type==='coin'){ctx.save();ctx.translate(it.x,y);ctx.shadowColor='#ffd27a';ctx.shadowBlur=10;const sx=Math.max(.2,Math.abs(Math.cos(T*3+it.ph)));
+    for(let k=2;k>=0;k--){ctx.fillStyle=k?'#c98a12':'#f2b33b';ctx.strokeStyle='#7a5200';ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(k*3-3,k*2.4,6.5*(k?1:sx),6.5,0,0,7);ctx.fill();ctx.stroke()}
+    ctx.shadowBlur=0;ctx.restore();return}
+  if(it.type==='gem'){ctx.save();ctx.translate(it.x,y);ctx.shadowColor='#9b7bff';ctx.shadowBlur=14;ctx.fillStyle='#7b5cff';ctx.strokeStyle='#cdbfff';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(-6,-4);ctx.lineTo(6,-4);ctx.lineTo(9,0);ctx.lineTo(0,10);ctx.lineTo(-9,0);ctx.closePath();ctx.fill();ctx.stroke();ctx.shadowBlur=0;ctx.fillStyle='#e7dfff';ctx.fillRect(-3,-3,2,2);ctx.restore();
+    if(Math.random()<.15)G.parts.push({x:it.x+rnd(-8,8),y:y-rnd(0,10),vx:0,vy:-20,life:.5,color:'#d9ccff',r:1.2});return}
   ctx.save();ctx.translate(it.x,y);ctx.shadowColor='#ff4d6a';ctx.shadowBlur=12;ctx.fillStyle='#ef4b4b';ctx.strokeStyle='#5c0f0f';ctx.lineWidth=1.2;
   ctx.beginPath();ctx.moveTo(0,7);ctx.bezierCurveTo(-11,-1,-7,-10,0,-4);ctx.bezierCurveTo(7,-10,11,-1,0,7);ctx.fill();ctx.shadowBlur=0;ctx.stroke();
   ctx.fillStyle='#ffb3b3';ctx.beginPath();ctx.arc(-3.5,-3.5,1.6,0,7);ctx.fill();ctx.restore()}
@@ -1907,6 +1928,25 @@ $('#v-shop').addEventListener('click',e=>{
       toast(shopCat==='weapon'&&(nv===5||nv===10||nv===15)?`+${nv} 달성! ${ELFX[list[i].el].split(' (')[0]} 효과가 ${nv===5?'생겼어요':nv===10?'강해졌어요':'각성했어요'}!`:`강화 성공! ${list[i].n} +${nv}`)}
     else{beep(150,.3,'sawtooth',.06);toast('강화 실패… 아이템은 그대로예요. 다시 도전!')}
     G.hero.hp=Math.min(G.hero.hp,maxHp());save();renderAll();renderShop()}
+});
+
+/* ---- 가방: 가진 무기·펫을 전투 중에도 바로 바꾸기 ---- */
+function openBag(){
+  const ws=S.own.weapon.slice().sort((a,b)=>a-b),ps=S.pets;
+  $('#modal').innerHTML=`<div class="sheet" data-bag="1" role="dialog" aria-label="가방"><p class="h2">가방</p>
+    <p class="sub" style="margin:0">가지고 있는 무기와 펫을 언제든 바꿔 쓸 수 있어요. 누르면 바로 바뀌어요.</p>
+    <b class="disp" style="font-size:17px">무기</b><div class="baggrid">${ws.map(i=>{const e=enhOf('weapon',i);return `<button class="bagit ${i===S.weapon?'on':''}" data-bw="${i}">${weaponSVG(i,null,e)}<span>${esc(WEAPONS[i].n)}${e?' +'+e:''}</span></button>`}).join('')}</div>
+    <b class="disp" style="font-size:17px">펫</b><div class="baggrid"><button class="bagit ${!S.pet?'on':''}" data-bp=""><span style="font-size:24px;line-height:46px">－</span><span>펫 없이</span></button>${ps.map(id=>{const p=PETS.find(x=>x.id===id),l=penhOf(id);return `<button class="bagit ${S.pet===id?'on':''}" data-bp="${id}">${petSVG(id)}<span>${esc(p.n)}${l?' +'+l:''}</span></button>`}).join('')}</div>
+    ${ps.length?'':'<p class="sub" style="margin:0">펫 탭에서 보석으로 펫을 데려올 수 있어요.</p>'}
+    <div class="row" style="justify-content:flex-end"><button class="btn gold" id="bagClose">닫기</button></div></div>`;
+  $('#modal').hidden=false;
+}
+$('#bagBtn').addEventListener('click',e=>{e.stopPropagation();G.atkHeld=false;openBag()});
+$('#modal').addEventListener('click',e=>{
+  if(!$('#modal').querySelector('[data-bag]'))return;
+  if(e.target.id==='bagClose'||e.target.id==='modal'){$('#modal').hidden=true;return}
+  const w=e.target.closest('[data-bw]');if(w){equip('weapon',+w.dataset.bw);save();renderAll();openBag();beep(880,.06,'triangle');return}
+  const p=e.target.closest('[data-bp]');if(p){S.pet=p.dataset.bp||null;G.pet.x=G.hero.x-30;G.pet.y=G.hero.y;save();renderAll();openBag();beep(880,.06,'triangle')}
 });
 
 /* ---- 펫 ---- */
