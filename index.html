@@ -1194,7 +1194,7 @@ function wordPool(){const lv=level(),mx=lv>=4?3:lv>=2?2:1;return WORDS.filter(w=
 const VH=340,GT=196,GB=326;
 const cv=$('#cv'),ctx=cv.getContext('2d');const lightC=document.createElement('canvas'),lctx=lightC.getContext('2d');
 const G={items:[],dropT:40,proj:[],bolts:[],rings:[],spellCD:0,spellMax:1,flash:0,flashC:'#fff',sbT:0,hero:{x:0,y:262,face:1,hp:5,inv:0,atkT:0,swing:0,walk:0,mv:0,spdT:0,shield:0},mobs:[],fx:[],parts:[],npc:null,ally:null,
-  pet:{x:-30,y:264,face:1,atkT:1,hop:0},cam:-200,spawnT:1.5,npcT:55,regenT:0,joy:{on:false,id:null,ox:0,oy:0,dx:0,dy:0},keys:{},atkHeld:false,
+  pet:{x:-30,y:264,face:1,atkT:1,hop:0},cam:-200,spawnT:.3,npcT:55,regenT:0,joy:{on:false,id:null,ox:0,oy:0,dx:0,dy:0},keys:{},atkHeld:false,
   boss:null,dead:false,rest:false,zone:-1,zoneT:0,shake:0,freeze:0,mana:0,ballOut:false,scale:1,dpr:1,vw:600,saveT:0,lights:[]};
 const MANA_MAX=10;
 const zoneIdx=()=>Math.floor(S.playSec/300)%ZONES.length;
@@ -1208,7 +1208,7 @@ function maxHp(){return ARMORS[S.armor].h+Math.floor(enhOf('armor',S.armor)/3)+(
 const heroAtk=()=>wDmg()+S.stat.atk;
 const blockPct=()=>Math.min(60,S.stat.def*8+ARMORS[S.armor].blk+Math.round(enhOf('armor',S.armor)*.6)+(S.pet==='creambear'?10:0));
 function heroSpeed(){return (BOOTS[S.boots].s+3*enhOf('boots',S.boots))*(G.hero.spdT>0?1.5:1)}
-function resetWorld(){G.mobs=[];G.items=[];G.proj=[];G.bolts=[];G.npc=null;G.ally=null;G.boss=null;G.hero.hp=maxHp();G.hero.inv=1.5;G.dead=false;hideBossBar();G.ballOut=false}
+function resetWorld(){G.mobs=[];G.items=[];G.proj=[];G.bolts=[];G.horde=null;G.hordeT=rnd(200,320);G.npc=null;G.ally=null;G.boss=null;G.hero.hp=maxHp();G.hero.inv=1.5;G.dead=false;hideBossBar();G.ballOut=false}
 
 function resize(){
   const r=cv.getBoundingClientRect();if(r.width<20||r.height<20)return; // 화면이 아직 안 잡혔으면 기다림
@@ -1236,16 +1236,34 @@ function mix(a,b,t){const A=hex(a),B=hex(b);return `rgb(${A.map((v,i)=>Math.roun
 function hsh(n){const x=Math.sin(n*127.1+zoneIdx()*311.7)*43758.5453;return x-Math.floor(x)}
 
 /* ---- 생성 ---- */
-function spawnMob(){
+function spawnMob(o={}){
   const z=ZONES[zoneIdx()],lv=level(),extra=[];
   if(lv>=4)extra.push('orc');if(lv>=6)extra.push('skeleton','knight');if(lv>=9)extra.push('golemLava','imp');
   const all=z.mobs.concat(extra),type=all[Math.random()*all.length|0],T=MOBT[type],h=G.hero;
   const elite=Math.random()<Math.min(.45,Math.max(0,(lv-2)*.06));
-  const side=Math.random()<.5?-1:1,x=h.x+side*(G.vw/2+40+Math.random()*60),y=rnd(GT+12,GB-6);
+  const side=o.side||(Math.random()<.5?-1:1),x=h.x+side*(G.vw/2+40+Math.random()*(o.horde?120:60)),y=rnd(GT+12,GB-6);
   const word=pick(wordPool(),w=>'w'+w.id);
   const hp=Math.ceil(T.hp*diff()*(elite?1.8:1));
   G.mobs.push({type,v:zoneIdx(),x,y,w:T.w*(elite?1.2:1),hp,maxHp:hp,elite,spd:T.spd*(1+.45*rage())*(elite?1.1:1),fly:T.fly,
     word,hits:0,state:'chase',t:0,face:-side,atkCD:1+Math.random(),hitT:0,sneaky:Math.random()<.12,fled:false,wasFlee:false,spoke:false,ph:Math.random()*6});
+  if(o.horde){const m=G.mobs[G.mobs.length-1];m.horde=1;m.sneaky=false;m.spoke=true;m.hp=m.maxHp=Math.max(1,Math.ceil(m.hp*.6));m.atkCD=1.5+Math.random()*1.5}
+}
+// 몹 무리 이벤트: 아주 가끔, 한쪽에서만 몬스터가 잔뜩 몰려옴
+function startHorde(){
+  const side=Math.random()<.5?-1:1,total=12+Math.min(10,level());
+  G.horde={side,total,spawned:0,killed:0,t:0,next:1.6};G.hordeMsg=3.2;G.shake=.4;
+  beep(70,.6,'sawtooth',.08);setTimeout(()=>beep(60,.6,'sawtooth',.08),350);
+  toast((side>0?'오른쪽':'왼쪽')+'에서 몬스터 무리가 몰려와요! 모두 물리치면 보석!');
+}
+function updHorde(dt){
+  const H=G.horde;H.t+=dt;H.next-=dt;
+  if(H.spawned<H.total&&H.next<=0){spawnMob({side:H.side,horde:true});H.spawned++;H.next=rnd(.18,.4)}
+  const alive=G.mobs.some(m=>m.horde&&!m.dead&&!m.gone);
+  if(H.spawned>=H.total&&!alive){
+    const g=2+Math.floor(level()/5),c=Math.round(30*diff());S.gems+=g;S.coins+=c;S.xp+=10;save();renderHUD();
+    fxText(G.hero.x,G.hero.y-80,'무리를 모두 물리쳤다! 보석 +'+g,'#c9b8ff',16,2.2,0,1);jingle([523,659,784,1046,1318,1568],90);
+    G.horde=null;G.hordeT=rnd(200,320)}
+  else if(H.t>70){G.mobs.forEach(m=>{if(m.horde&&!m.dead){m.state='flee';m.leave=true}});G.horde=null;G.hordeT=rnd(200,320);toast('몬스터 무리가 물러갔어요')}
 }
 function spawnNPC(){
   const n=NPCS[Math.random()*NPCS.length|0],h=G.hero;
@@ -1300,9 +1318,18 @@ function update(dt){
   G.items=G.items.filter(it=>it.t>0);
   // 등장 관리
   const normals=G.mobs.filter(m=>!m.boss&&!m.ballBoss&&!m.dead&&!m.leave).length;
-  if(!G.boss&&!G.npc){
-    G.spawnT-=dt;const cap=2+Math.min(3,Math.floor(level()/3));
-    if(G.spawnT<=0&&normals<cap){spawnMob();G.spawnT=rnd(1.8,3.6)}
+  // 몬스터: 처음 5마리까지, 레벨 4마다 1마리씩 늘어 최대 8마리. 생활 미션 캐릭터가 있어도 계속 나옴
+  if(!G.boss&&!G.horde){
+    G.hordeT=(G.hordeT??rnd(150,240))-dt;
+    if(G.hordeT<=0&&S.stats.kills>=8&&!G.npc){startHorde()}
+  }
+  if(G.horde)updHorde(dt);
+  if(G.hordeMsg>0)G.hordeMsg-=dt;
+  if(!G.boss&&!G.horde){
+    G.spawnT-=dt;const cap=5+Math.min(3,Math.floor((level()-1)/4));
+    if(G.spawnT<=0&&normals<cap){spawnMob();G.spawnT=normals<2?rnd(.4,.9):rnd(1,2)}
+  }
+  if(!G.boss&&!G.npc&&!G.horde){
     G.npcT-=dt;
     if(!S.ballOpen&&S.stats.kills>=12&&!G.ballOut)spawnBallBoss();
     else if(S.ksb>=12&&!G.mobs.some(m=>m.ballBoss))startBoss();
@@ -1318,6 +1345,7 @@ function update(dt){
   if(n){n.t+=dt;const dx=h.x-n.x,dy=h.y-n.y;
     if(n.state==='wait'&&Math.abs(dx)<44&&Math.abs(dy)<46)openNPC();
     if(n.state==='bye'&&n.t>2.2)G.npc=null;
+    if(n.state==='wait'&&n.t>60){n.state='bye';n.t=0}
     if(Math.abs(dx)>900)G.npc=null;}
   // 효과
   for(const p of G.parts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=(p.g||0)*dt;p.life-=dt}
@@ -1617,6 +1645,13 @@ function draw(){
   }
   if(G.freeze>0){ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='rgba(120,190,255,.12)';ctx.fillRect(0,0,cv.width,cv.height)}
   if(G.flash>0){ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=Math.min(.5,G.flash);ctx.fillStyle=G.flashC;ctx.fillRect(0,0,cv.width,cv.height);ctx.globalAlpha=1}
+  // 몹 무리 경고 + 몰려오는 쪽 화살표
+  if(G.horde||G.hordeMsg>0){ctx.setTransform(s,0,0,s,0,oy*s);const T=performance.now()/1000,sd=G.horde?G.horde.side:1;
+    if(G.hordeMsg>0){ctx.globalAlpha=Math.min(1,G.hordeMsg);ctx.textAlign='center';ctx.font=`26px "Black Han Sans","Noto Sans KR",sans-serif`;ctx.lineWidth=5;ctx.strokeStyle='#000';
+      const msg='몬스터 무리가 몰려온다!';ctx.strokeText(msg,G.vw/2,VH*.3);ctx.fillStyle='#ff5a4a';ctx.fillText(msg,G.vw/2,VH*.3);ctx.globalAlpha=1}
+    if(G.horde){const ax=sd>0?G.vw-16:16,ay=VH*.62,p=.55+Math.sin(T*8)*.35;ctx.globalAlpha=p;ctx.fillStyle='#ff3b30';ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax-sd*22,ay-16);ctx.lineTo(ax-sd*22,ay+16);ctx.closePath();ctx.fill();
+      const g2=ctx.createLinearGradient(sd>0?G.vw:0,0,sd>0?G.vw-70:70,0);g2.addColorStop(0,'rgba(255,40,30,.35)');g2.addColorStop(1,'rgba(255,40,30,0)');ctx.fillStyle=g2;ctx.fillRect(sd>0?G.vw-70:0,GT-40,70,VH-GT+40);ctx.globalAlpha=1;
+      const left=G.horde.total-G.horde.spawned+G.mobs.filter(m=>m.horde&&!m.dead).length;ctx.font='700 13px "Noto Sans KR",sans-serif';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='#000';ctx.strokeText('남은 무리 '+left,G.vw/2,GT-24);ctx.fillStyle='#ffd0c8';ctx.fillText('남은 무리 '+left,G.vw/2,GT-24)}}
   // 지역 이름
   if(G.zoneT>0){ctx.setTransform(s,0,0,s,0,oy*s);ctx.globalAlpha=Math.min(1,G.zoneT);ctx.textAlign='center';ctx.font=`28px "Black Han Sans","Noto Sans KR",sans-serif`;
     ctx.lineWidth=5;ctx.strokeStyle='#000';ctx.strokeText(z.n,G.vw/2,VH*.36);ctx.fillStyle='#f2e6c8';ctx.fillText(z.n,G.vw/2,VH*.36);ctx.globalAlpha=1}
